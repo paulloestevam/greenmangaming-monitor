@@ -29,8 +29,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Optional;
+import java.util.stream.Stream;
 
 @Service
 @Slf4j
@@ -38,6 +38,8 @@ public class GmgService {
 
     private final JavaMailSender mailSender;
     private final GmgConfig gmgConfig;
+
+    private static final String LOG_DIR = "logs";
 
     @Value("${webdriver.chrome.driver-path:}")
     private String chromeDriverPath;
@@ -80,17 +82,15 @@ public class GmgService {
                 performScroll(driver);
 
                 String pageSource = driver.getPageSource();
-                saveDebugHtml(pageSource); // Backup para debug
+                saveDebugHtml(pageSource);
 
                 Document document = Jsoup.parse(pageSource);
 
-                // Tenta buscar pelos Cards principais (LI)
                 Elements productCards = document.select("li[ng-repeat*='product in'], li.product-card-container");
 
                 if (productCards.isEmpty()) {
-                    // Fallback: Busca pelas tags de preço se a estrutura de LI falhar
                     Elements tags = document.select("gmgprice[type=discount]");
-                    for(Element tag : tags) {
+                    for (Element tag : tags) {
                         processGmgTag(tag, url, allGamesFound, document);
                     }
                 } else {
@@ -102,22 +102,22 @@ public class GmgService {
 
             if (!allGamesFound.isEmpty()) {
                 allGamesFound.sort(Comparator.comparingInt(Game::getDiscountPercentage).reversed());
-                log.info("Total de ofertas encontradas: {}", allGamesFound.size());
+                log.info("Total de ofertas: {}", allGamesFound.size());
 
-                // 1. Gera corpo do e-mail (Texto Plano Formatado)
                 String emailBody = generatePlainTextEmail(allGamesFound);
-
-                // 2. Salva arquivo de Log
+                String lastLogContent = getLastLogContent();
                 saveLogFile(emailBody);
 
-                // 3. Gera HTML Visual (opcional, salvo em disco para conferencia)
-                String htmlVisual = generateHTMLEmail(allGamesFound);
-                saveHtmlFile(htmlVisual);
+                if (isNewContent(lastLogContent, emailBody)) {
+                    log.info("Novas ofertas detectadas! Enviando e-mail...");
 
-                String subject = "Green Man Gaming - " + allGamesFound.size() + " Ofertas do dia";
 
-                // 4. Envia E-mail (Texto Plano)
-                sendEmail(emailSender, subject, emailBody, false);
+                    String subject = "Green Man Gaming - " + allGamesFound.size() + " Ofertas do dia";
+                    sendEmail(emailSender, subject, emailBody);
+                } else {
+                    log.info("Nenhuma mudança nas ofertas em relação ao último log. E-mail não enviado.");
+                }
+
             } else {
                 log.warn("Nenhuma oferta encontrada acima de {}%.", minDiscountPercentage);
             }
@@ -129,18 +129,46 @@ public class GmgService {
         }
     }
 
-    // --- FORMATAÇÃO TABULAR (EXCEL STYLE) ---
+    private boolean isNewContent(String lastLogContent, String newBody) {
+        if (lastLogContent.isEmpty()) return true;
+
+        String newCoreContent = newBody;
+        String oldCoreContent = lastLogContent;
+
+        return !newCoreContent.equals(oldCoreContent);
+    }
+
+    private String getLastLogContent() {
+        try {
+            Path dir = Paths.get(LOG_DIR);
+            if (!Files.exists(dir)) return "";
+
+            try (Stream<Path> stream = Files.list(dir)) {
+                Optional<Path> lastLog = stream
+                        .filter(f -> !Files.isDirectory(f))
+                        .filter(f -> f.getFileName().toString().startsWith("log_") && f.toString().endsWith(".txt"))
+                        .max(Comparator.comparing(Path::getFileName));
+
+                if (lastLog.isPresent()) {
+                    log.info("📂 Último log carregado para comparação: " + lastLog.get().getFileName());
+                    return Files.readString(lastLog.get(), StandardCharsets.UTF_8);
+                }
+            }
+        } catch (IOException e) {
+            log.error("Erro ao ler último log", e);
+        }
+        return "";
+    }
+
+
     private String generatePlainTextEmail(List<Game> games) {
         StringBuilder sb = new StringBuilder();
-
-        // Formato: Contador(2d)  Preço(10s)  Desconto(4s)  Nome
-        // Exemplo:  1      $ 950   90%  Duke Nukem...
 
         for (int i = 0; i < games.size(); i++) {
             Game game = games.get(i);
             String discountStr = game.getDiscountPercentage() + "%";
 
-            String line = String.format("%2d %7s %-3s  %.30s",
+            String line = String.format("%2d %7s  %-4s  %.30s",
                     i + 1,
                     game.getCurrentPrice(),
                     discountStr,
@@ -148,22 +176,41 @@ public class GmgService {
             );
             sb.append(line).append("\n");
         }
-
         return sb.toString();
     }
 
-    private String generateHTMLEmail(List<Game> games) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("<html><body><h2>Ofertas GMG</h2><ul>");
-        for(Game g : games) {
-            sb.append("<li><img src='").append(g.getImageUrl()).append("' width='50'> ")
-                    .append(g.getTitle()).append(" - ").append(g.getCurrentPrice()).append("</li>");
+    private void createLogDirectoryIfNotExists(Path dirPath) throws IOException {
+        if (!Files.exists(dirPath)) {
+            Files.createDirectories(dirPath);
         }
-        sb.append("</ul></body></html>");
-        return sb.toString();
     }
 
-    // --- EXTRAÇÃO DE DADOS ---
+    private void saveLogFile(String content) {
+        try {
+            Path logDir = Paths.get(LOG_DIR);
+            createLogDirectoryIfNotExists(logDir);
+
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+            String fileName = "log_" + timestamp + ".txt";
+            Path filePath = logDir.resolve(fileName);
+
+            Files.writeString(filePath, content, StandardCharsets.UTF_8);
+            log.info("Log salvo em: " + filePath.toAbsolutePath());
+        } catch (IOException e) {
+            log.error("Erro ao salvar log", e);
+        }
+    }
+
+    private void saveDebugHtml(String html) {
+        try {
+            Path logDir = Paths.get(LOG_DIR);
+            createLogDirectoryIfNotExists(logDir);
+            Path filePath = logDir.resolve("debug_source.html");
+            Files.writeString(filePath, html, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+        }
+    }
+
     private void processCard(Element card, String url, List<Game> allGamesFound, Document fullDoc) {
         try {
             String discountText = getDiscountText(card);
@@ -180,91 +227,79 @@ public class GmgService {
                 if (linkTag != null && linkTag.hasAttr("href")) link = linkTag.attr("href");
                 if (!link.startsWith("http")) link = "https://www.greenmangaming.com" + link;
 
-                // Busca Imagem
                 String imageUrl = findImage(card, fullDoc, title);
 
                 allGamesFound.add(new Game(title, currentPrice, originalPrice, discount, link, imageUrl));
             }
-        } catch (Exception e) { /* ignore */ }
+        } catch (Exception e) {
+        }
     }
 
     private void processGmgTag(Element tag, String url, List<Game> allGamesFound, Document fullDoc) {
         try {
             String txt = tag.text().replaceAll("[^0-9]", "");
-            if(!txt.isEmpty() && Integer.parseInt(txt) >= minDiscountPercentage) {
-                // Sobe na árvore para achar o container completo (LI)
+            if (!txt.isEmpty() && Integer.parseInt(txt) >= minDiscountPercentage) {
                 Element parent = findProductContainer(tag);
-                if(parent != null) {
+                if (parent != null) {
                     processCard(parent, url, allGamesFound, fullDoc);
                 }
             }
-        } catch(Exception e) { /* ignore */ }
+        } catch (Exception e) {
+        }
     }
 
     private Element findProductContainer(Element child) {
         Element current = child.parent();
         int levels = 0;
-        // Aumentado para 15 niveis para garantir que chegue ao LI
         while (current != null && levels < 15) {
             String tag = current.tagName().toLowerCase();
             String className = current.className().toLowerCase();
-
-            if (tag.equals("li") ||
-                    className.contains("product-card") ||
-                    className.contains("module") ||
-                    current.hasAttr("ng-controller")) {
+            if (tag.equals("li") || className.contains("product-card") || className.contains("module") || current.hasAttr("ng-controller")) {
                 return current;
             }
             current = current.parent();
             levels++;
         }
-        return child.parent(); // Fallback
+        return child.parent();
     }
 
     private String findImage(Element card, Document fullDoc, String title) {
-        // 1. Tenta achar imagem dentro do card encontrado
         String url = searchImgInElement(card);
-        if(isValidUrl(url)) return fixUrl(url);
+        if (isValidUrl(url)) return fixUrl(url);
 
-        // 2. Se falhar, tenta no elemento pai (caso o container encontrado seja 'prod-info' e não 'li')
-        if(card.parent() != null) {
+        if (card.parent() != null) {
             url = searchImgInElement(card.parent());
-            if(isValidUrl(url)) return fixUrl(url);
+            if (isValidUrl(url)) return fixUrl(url);
         }
 
-        // 3. Último recurso: Busca global pelo Título (ALT)
-        if(title != null && title.length() > 3) {
+        if (title != null && title.length() > 3) {
             Elements allImgs = fullDoc.select("img[alt*='" + title.replace("'", "") + "']");
-            for(Element img : allImgs) {
+            for (Element img : allImgs) {
                 url = getSrc(img);
-                if(isValidUrl(url)) return fixUrl(url);
+                if (isValidUrl(url)) return fixUrl(url);
             }
         }
         return "https://placehold.co/300x300?text=No+Image";
     }
 
     private String searchImgInElement(Element el) {
-        // Prioridade para .media-object img (estrutura comum do GMG)
         Element mediaImg = el.selectFirst(".media-object img");
-        if(mediaImg != null) return getSrc(mediaImg);
+        if (mediaImg != null) return getSrc(mediaImg);
 
-        // Busca genérica
         Elements imgs = el.select("img");
-        for(Element img : imgs) {
+        for (Element img : imgs) {
             String src = getSrc(img);
-            if(isValidUrl(src)) return src;
+            if (isValidUrl(src)) return src;
         }
         return null;
     }
 
     private String getSrc(Element img) {
-        if(isValidUrl(img.attr("ng-src"))) return img.attr("ng-src");
-        if(isValidUrl(img.attr("src"))) return img.attr("src");
-        if(isValidUrl(img.attr("data-src"))) return img.attr("data-src");
+        if (isValidUrl(img.attr("ng-src"))) return img.attr("ng-src");
+        if (isValidUrl(img.attr("src"))) return img.attr("src");
+        if (isValidUrl(img.attr("data-src"))) return img.attr("data-src");
         return null;
     }
-
-    // --- UTILITARIOS ---
 
     private String getDiscountText(Element card) {
         Element tag = card.selectFirst("gmgprice[type=discount]");
@@ -316,40 +351,16 @@ public class GmgService {
         }
     }
 
-    private void saveLogFile(String content) {
-        try {
-            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-            String fileName = "log_" + timestamp + ".txt";
-            Path path = Paths.get(fileName).toAbsolutePath();
-            Files.writeString(path, content, StandardCharsets.UTF_8);
-            log.info("✅ Log salvo em: " + path);
-        } catch (IOException e) {
-            log.error("Erro ao salvar log", e);
-        }
-    }
-
-    private void saveHtmlFile(String content) {
-        try {
-            Files.writeString(Paths.get("visual_debug.html"), content, StandardCharsets.UTF_8);
-        } catch (IOException e) {}
-    }
-
-    private void saveDebugHtml(String html) {
-        try {
-            Files.writeString(Paths.get("debug_source.html"), html, StandardCharsets.UTF_8);
-        } catch (IOException e) {}
-    }
-
-    private void sendEmail(String to, String subject, String body, boolean isHtml) {
+    private void sendEmail(String to, String subject, String body) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true);
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setFrom(emailSender);
-            helper.setText(body, isHtml);
+            helper.setText(body, false);
             mailSender.send(message);
-            log.info("📧 E-mail enviado com sucesso!");
+            log.info("E-mail enviado com sucesso!");
         } catch (MessagingException e) {
             log.error("Erro ao enviar e-mail: " + e.getMessage());
         }
