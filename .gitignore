@@ -1,0 +1,65 @@
+HELP.md
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+# Arquivos compilados e de build
+target/
+bin/
+build/
+out/
+*.class
+*.jar
+*.war
+
+# IntelliJ IDEA (Arquivos de configuração da IDE)
+.idea/
+*.iml
+*.iws
+
+# Arquivos de sistema
+Thumbs.db
+.DS_Store
+
+# Configurações locais e sensíveis (Senhas, Tokens, etc)
+# Importante: nunca suba suas credenciais!
+config.properties
+.env
+secrets.json
+
+# Logs
+*.log
+logs/

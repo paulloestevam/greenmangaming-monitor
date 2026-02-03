@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: greenmangaming-monitor
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: paulloestevam@gmail.com
+    password: aaaa bbbb cccc dddd # Senha de app
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+    default-encoding: UTF-8
+
+email:
+  sender: "paulloestevam@gmail.com"
+
+webdriver:
+  chrome:
+    # Deixe vazio no Linux se tiver instalado via apt.
+    # No Windows, passe o caminho via argumento na execução.
+    driver-path: ""
+
+gmg:
+  urls:
+    - "https://www.greenmangaming.com/pt/hot-deals/"
+
+scheduler:
+  time: "0 0 9 * * *" # Executa todo dia às 09:00
+
+# Filtros
+minDiscountPercentage: 80
+productLineWidth: 300
