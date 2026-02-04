@@ -1,4 +1,4 @@
-package com.paulloestevam.steamwishlist_monitor.model;
+package com.paulloestevam.greenmangaming_monitor.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

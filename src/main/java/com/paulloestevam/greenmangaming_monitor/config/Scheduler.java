@@ -1,6 +1,6 @@
-package com.paulloestevam.steamwishlist_monitor.config;
+package com.paulloestevam.greenmangaming_monitor.config;
 
-import com.paulloestevam.steamwishlist_monitor.service.SteamService;
+import com.paulloestevam.greenmangaming_monitor.service.GmgService;
 import jakarta.annotation.PostConstruct;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -8,9 +8,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class Scheduler {
 
-    private final SteamService service;
+    private final GmgService service;
 
-    public Scheduler(SteamService service) {
+    public Scheduler(GmgService service) {
         this.service = service;
     }
 

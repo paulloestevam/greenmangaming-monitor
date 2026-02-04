@@ -29,12 +29,14 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Optional;
+import java.util.stream.Stream;
 
 @Service
 @Slf4j
 public class GmgService {
+
+    private static final String LOG_DIR = "logs";
 
     private final JavaMailSender mailSender;
     private final GmgConfig gmgConfig;
@@ -84,13 +86,11 @@ public class GmgService {
 
                 Document document = Jsoup.parse(pageSource);
 
-                // Tenta buscar pelos Cards principais (LI)
                 Elements productCards = document.select("li[ng-repeat*='product in'], li.product-card-container");
 
                 if (productCards.isEmpty()) {
-                    // Fallback: Busca pelas tags de preço se a estrutura de LI falhar
                     Elements tags = document.select("gmgprice[type=discount]");
-                    for(Element tag : tags) {
+                    for (Element tag : tags) {
                         processGmgTag(tag, url, allGamesFound, document);
                     }
                 } else {
@@ -102,28 +102,24 @@ public class GmgService {
 
             if (!allGamesFound.isEmpty()) {
                 allGamesFound.sort(Comparator.comparingInt(Game::getDiscountPercentage).reversed());
-                log.info("Total de ofertas encontradas: {}", allGamesFound.size());
+                log.info("Total de ofertas: {}", allGamesFound.size());
 
-                // 1. Gera corpo do e-mail (Texto Plano Formatado)
                 String emailBody = generatePlainTextEmail(allGamesFound);
-
-                // 2. Salva arquivo de Log
+                String lastLogContent = getLastLogContent();
                 saveLogFile(emailBody);
 
-                // 3. Gera HTML Visual (opcional, salvo em disco para conferencia)
-                String htmlVisual = generateHTMLEmail(allGamesFound);
-                saveHtmlFile(htmlVisual);
-
-                String subject = "Green Man Gaming - " + allGamesFound.size() + " Ofertas do dia";
-
-                // 4. Envia E-mail (Texto Plano)
-                sendEmail(emailSender, subject, emailBody, false);
+                if (!lastLogContent.trim().equals(emailBody.trim())) {
+                    log.info("Novas ofertas detectadas! Enviando e-mail...");
+                    sendEmail(emailSender, "Gmg - " + allGamesFound.size() + " Ofertas", emailBody);
+                } else {
+                    log.info("Nenhuma mudança nas ofertas em relação ao último log. E-mail não enviado.");
+                }
             } else {
-                log.warn("Nenhuma oferta encontrada acima de {}%.", minDiscountPercentage);
+                log.warn("Nenhuma oferta acima de {}% encontrada.", minDiscountPercentage);
             }
 
         } catch (Exception e) {
-            log.error("Erro fatal no crawler", e);
+            log.error("Erro fatal:", e);
         } finally {
             if (driver != null) driver.quit();
         }
@@ -140,7 +136,7 @@ public class GmgService {
             Game game = games.get(i);
             String discountStr = game.getDiscountPercentage() + "%";
 
-            String line = String.format("%2d %7s %-3s  %.30s",
+            String line = String.format("%2d %7s %-2s  %.30s",
                     i + 1,
                     game.getCurrentPrice(),
                     discountStr,
@@ -152,18 +148,6 @@ public class GmgService {
         return sb.toString();
     }
 
-    private String generateHTMLEmail(List<Game> games) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("<html><body><h2>Ofertas GMG</h2><ul>");
-        for(Game g : games) {
-            sb.append("<li><img src='").append(g.getImageUrl()).append("' width='50'> ")
-                    .append(g.getTitle()).append(" - ").append(g.getCurrentPrice()).append("</li>");
-        }
-        sb.append("</ul></body></html>");
-        return sb.toString();
-    }
-
-    // --- EXTRAÇÃO DE DADOS ---
     private void processCard(Element card, String url, List<Game> allGamesFound, Document fullDoc) {
         try {
             String discountText = getDiscountText(card);
@@ -191,14 +175,14 @@ public class GmgService {
     private void processGmgTag(Element tag, String url, List<Game> allGamesFound, Document fullDoc) {
         try {
             String txt = tag.text().replaceAll("[^0-9]", "");
-            if(!txt.isEmpty() && Integer.parseInt(txt) >= minDiscountPercentage) {
+            if (!txt.isEmpty() && Integer.parseInt(txt) >= minDiscountPercentage) {
                 // Sobe na árvore para achar o container completo (LI)
                 Element parent = findProductContainer(tag);
-                if(parent != null) {
+                if (parent != null) {
                     processCard(parent, url, allGamesFound, fullDoc);
                 }
             }
-        } catch(Exception e) { /* ignore */ }
+        } catch (Exception e) { /* ignore */ }
     }
 
     private Element findProductContainer(Element child) {
@@ -224,20 +208,20 @@ public class GmgService {
     private String findImage(Element card, Document fullDoc, String title) {
         // 1. Tenta achar imagem dentro do card encontrado
         String url = searchImgInElement(card);
-        if(isValidUrl(url)) return fixUrl(url);
+        if (isValidUrl(url)) return fixUrl(url);
 
         // 2. Se falhar, tenta no elemento pai (caso o container encontrado seja 'prod-info' e não 'li')
-        if(card.parent() != null) {
+        if (card.parent() != null) {
             url = searchImgInElement(card.parent());
-            if(isValidUrl(url)) return fixUrl(url);
+            if (isValidUrl(url)) return fixUrl(url);
         }
 
         // 3. Último recurso: Busca global pelo Título (ALT)
-        if(title != null && title.length() > 3) {
+        if (title != null && title.length() > 3) {
             Elements allImgs = fullDoc.select("img[alt*='" + title.replace("'", "") + "']");
-            for(Element img : allImgs) {
+            for (Element img : allImgs) {
                 url = getSrc(img);
-                if(isValidUrl(url)) return fixUrl(url);
+                if (isValidUrl(url)) return fixUrl(url);
             }
         }
         return "https://placehold.co/300x300?text=No+Image";
@@ -246,21 +230,21 @@ public class GmgService {
     private String searchImgInElement(Element el) {
         // Prioridade para .media-object img (estrutura comum do GMG)
         Element mediaImg = el.selectFirst(".media-object img");
-        if(mediaImg != null) return getSrc(mediaImg);
+        if (mediaImg != null) return getSrc(mediaImg);
 
         // Busca genérica
         Elements imgs = el.select("img");
-        for(Element img : imgs) {
+        for (Element img : imgs) {
             String src = getSrc(img);
-            if(isValidUrl(src)) return src;
+            if (isValidUrl(src)) return src;
         }
         return null;
     }
 
     private String getSrc(Element img) {
-        if(isValidUrl(img.attr("ng-src"))) return img.attr("ng-src");
-        if(isValidUrl(img.attr("src"))) return img.attr("src");
-        if(isValidUrl(img.attr("data-src"))) return img.attr("data-src");
+        if (isValidUrl(img.attr("ng-src"))) return img.attr("ng-src");
+        if (isValidUrl(img.attr("src"))) return img.attr("src");
+        if (isValidUrl(img.attr("data-src"))) return img.attr("data-src");
         return null;
     }
 
@@ -318,40 +302,68 @@ public class GmgService {
 
     private void saveLogFile(String content) {
         try {
+            // Garante que o diretório logs/ exista
+            Path dir = Paths.get(LOG_DIR);
+            if (!Files.exists(dir)) {
+                Files.createDirectories(dir);
+            }
+
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
             String fileName = "log_" + timestamp + ".txt";
-            Path path = Paths.get(fileName).toAbsolutePath();
+
+            // Resolve o caminho completo: logs/log_20260204_1715.txt
+            Path path = dir.resolve(fileName).toAbsolutePath();
+
             Files.writeString(path, content, StandardCharsets.UTF_8);
             log.info("✅ Log salvo em: " + path);
         } catch (IOException e) {
-            log.error("Erro ao salvar log", e);
+            log.error("Erro ao criar diretório ou salvar log", e);
         }
-    }
-
-    private void saveHtmlFile(String content) {
-        try {
-            Files.writeString(Paths.get("visual_debug.html"), content, StandardCharsets.UTF_8);
-        } catch (IOException e) {}
     }
 
     private void saveDebugHtml(String html) {
         try {
             Files.writeString(Paths.get("debug_source.html"), html, StandardCharsets.UTF_8);
-        } catch (IOException e) {}
+        } catch (IOException e) {
+        }
     }
 
-    private void sendEmail(String to, String subject, String body, boolean isHtml) {
+    private String getLastLogContent() {
+        try {
+            Path dir = Paths.get(LOG_DIR);
+            if (!Files.exists(dir)) return "";
+
+            try (Stream<Path> stream = Files.list(dir)) {
+                Optional<Path> lastLog = stream
+                        .filter(f -> !Files.isDirectory(f))
+                        .filter(f -> f.getFileName().toString().startsWith("log_") && f.toString().endsWith(".txt"))
+                        .max(Comparator.comparing(Path::getFileName));
+
+                if (lastLog.isPresent()) {
+                    log.info("📂 Último log carregado para comparação: " + lastLog.get().getFileName());
+                    return Files.readString(lastLog.get(), StandardCharsets.UTF_8);
+                }
+            }
+        } catch (IOException e) {
+            log.error("Erro ao ler último log", e);
+        }
+        return "";
+    }
+
+    private void sendEmail(String to, String subject, String body) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setFrom(emailSender);
-            helper.setText(body, isHtml);
+            helper.setText(body, false);
             mailSender.send(message);
-            log.info("📧 E-mail enviado com sucesso!");
+            log.info("E-mail enviado!");
         } catch (MessagingException e) {
-            log.error("Erro ao enviar e-mail: " + e.getMessage());
+            log.error("Erro e-mail", e);
         }
     }
+
+
 }

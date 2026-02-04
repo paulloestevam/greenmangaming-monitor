@@ -1,3 +1,6 @@
+server:
+  port: 8083
+
 spring:
   application:
     name: greenmangaming-monitor
@@ -5,7 +8,7 @@ spring:
     host: smtp.gmail.com
     port: 587
     username: paulloestevam@gmail.com
-    password: aaaa bbbb cccc dddd # Senha de app
+    password: aaaa aaaa aaaa aaaa # Senha de app
     properties:
       mail:
         smtp:
@@ -16,6 +19,18 @@ spring:
 
 email:
   sender: "paulloestevam@gmail.com"
+
+logging:
+  file:
+    name: logs/console.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      total-size-cap: 100MB
+      max-history: 7
+  level:
+    root: INFO
+    com.paulloestevam.greenmangaming_monitor:
 
 webdriver:
   chrome:
@@ -28,8 +43,8 @@ gmg:
     - "https://www.greenmangaming.com/pt/hot-deals/"
 
 scheduler:
-  time: "0 0 9 * * *" # Executa todo dia às 09:00
+  time: "0 0 9 * * *" # Executa todo dia às 10:00
 
 # Filtros
-minDiscountPercentage: 80
+minDiscountPercentage: 90
 productLineWidth: 300
