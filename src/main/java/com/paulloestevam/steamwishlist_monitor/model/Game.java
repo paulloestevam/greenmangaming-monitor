@@ -1,4 +1,4 @@
-package com.paulloestevam.greenmangaming_monitor.model;
+package com.paulloestevam.steamwishlist_monitor.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -11,5 +11,5 @@ public class Game {
     private String originalPrice;
     private int discountPercentage;
     private String url;
-    private String imageUrl; // Novo campo
+    private String imageUrl;
 }

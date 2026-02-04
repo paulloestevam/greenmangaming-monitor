@@ -1,6 +1,6 @@
-package com.paulloestevam.greenmangaming_monitor.config;
+package com.paulloestevam.steamwishlist_monitor.config;
 
-import com.paulloestevam.greenmangaming_monitor.service.GmgService;
+import com.paulloestevam.steamwishlist_monitor.service.SteamService;
 import jakarta.annotation.PostConstruct;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -8,10 +8,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class Scheduler {
 
-    private final GmgService gmgService;
+    private final SteamService service;
 
-    public Scheduler(GmgService gmgService) {
-        this.gmgService = gmgService;
+    public Scheduler(SteamService service) {
+        this.service = service;
     }
 
     @PostConstruct
@@ -21,7 +21,7 @@ public class Scheduler {
 
     @Scheduled(cron = "${scheduler.time}")
     public void fetchDealsPeriodically() {
-        gmgService.fetchDeals();
+        service.fetchDeals();
     }
 
 

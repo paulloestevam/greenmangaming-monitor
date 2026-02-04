@@ -1,10 +1,10 @@
-package com.paulloestevam.greenmangaming_monitor;
+package com.paulloestevam.steamwishlist_monitor;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class GreenmangamingMonitorApplicationTests {
+class SteamWishlistMonitorApplicationTests {
 
 	@Test
 	void contextLoads() {

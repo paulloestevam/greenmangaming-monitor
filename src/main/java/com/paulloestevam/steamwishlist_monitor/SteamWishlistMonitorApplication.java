@@ -1,4 +1,4 @@
-package com.paulloestevam.greenmangaming_monitor;
+package com.paulloestevam.steamwishlist_monitor;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -6,8 +6,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EnableScheduling
-public class GreenmangamingMonitorApplication {
+public class SteamWishlistMonitorApplication {
     public static void main(String[] args) {
-        SpringApplication.run(GreenmangamingMonitorApplication.class, args);
+        SpringApplication.run(SteamWishlistMonitorApplication.class, args);
     }
 }
